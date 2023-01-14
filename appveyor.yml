@@ -31,10 +31,10 @@ for:
     - image: Visual Studio 2019
 
   after_build:
-  - 7z a counter-windows.zip %CD%\dist\*.exe
+  - 7z a DistriLock-windows.zip %CD%\dist\*.exe
 
   artifacts:
-  - path: counter-windows.zip
+  - path: DistriLock-windows.zip
 
 #
 #   macOS package
@@ -45,10 +45,10 @@ for:
     - image: macOS
 
   after_build:
-  - tar -czvf counter-macos.tar.gz -C dist counter.app
+  - tar -czvf DistriLock-macos.tar.gz -C dist DistriLock.app
 
   artifacts:
-  - path: counter-macos.tar.gz
+  - path: DistriLock-macos.tar.gz
 
 #
 #   Linux package
@@ -59,7 +59,7 @@ for:
     - image: Ubuntu
 
   after_build:
-  - tar -czvf counter-linux.tar.gz -C dist counter
+  - tar -czvf DistriLock-linux.tar.gz -C dist DistriLock
 
   artifacts:
-  - path: counter-linux.tar.gz
+  - path: DistriLock-linux.tar.gz
