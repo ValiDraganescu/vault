@@ -1,4 +1,3 @@
-from flet.security import encrypt, decrypt
 from flet import (
     Container,
     UserControl,
@@ -6,7 +5,6 @@ from flet import (
     AppBar,
     Icon,
     icons,
-    IconButton,
     Text,
     colors,
     PopupMenuButton,
@@ -21,27 +19,16 @@ from flet import (
     Column,
     Divider,
     TextField,
-    TextStyle,
-    padding,
-    Alignment,
     ControlEvent,
     FilePickerResultEvent,
-    SnackBar,
-    Dropdown,
-    dropdown,
-    Card
+    SnackBar
 )
 
 from logger import log
 from sidebar import Sidebar
-from button import Button
-from delete_button import DeleteButton
-from pyperclip import (copy)
-from file_type import FileType, FILE_TYPE_VALUES
-from os import remove
-
-SIDEBAR_WIDTH = 300
-
+from constants import (SIDEBAR_WIDTH)
+from file_viewer import FileViewer
+from events import event_bus, Events
 
 class VaultApp(UserControl):
     page: Page
@@ -54,9 +41,7 @@ class VaultApp(UserControl):
     sidebar: Sidebar
     password_input: TextField
     login_dialog: AlertDialog
-    file_viewer: Container
-    file_viewer_title: TextField
-    file_viewer_content: TextField
+    file_viewer: FileViewer
 
     @log
     def __init__(self, page: Page):
@@ -84,35 +69,24 @@ class VaultApp(UserControl):
         self.file_picker = self.view_file_picker(self.on_select_workspace)
         self.page.overlay.append(self.file_picker)
 
-        self.sidebar = self.view_side_bar(
-            self.on_file_selected, self.on_create_secret)
+        self.sidebar = Sidebar(self.page)
         self.password_input = self.view_password_input()
         self.login_dialog = self.view_login_dialog(
             self.password_input, on_click=self.on_login_success)
 
-        self.file_viewer_copy_title_btn = self.view_copy_title_btn()
-        self.file_viewer_copy_content_btn = self.view_copy_content_btn()
-        self.file_viewer_title = self.view_file_viewer_title()
-        self.file_viewer_content = self.view_file_viewer_content()
-        self.file_viewer_save_btn = self.view_save_file_btn(
-            self.on_file_save_click)
-        self.file_viewer_edit_btn = self.view_edit_file_btn(
-            self.on_file_edit_click
-        )
-        self.file_viewer_delete_btn = self.view_delete_file_btn(
-            self.on_file_delete_click
-        )
-        self.file_viewer_file_type_picker = self.view_file_viewer_file_type_picker()
-        self.file_viewer = self.view_file_viewer()
-        self.file_viewer.visible = False
-        self.page.on_resize = self.on_page_resize
+        self.file_viewer = FileViewer(self.page)
+        
+        event_bus.subscribe(Events.UPDATE_SIDEBAR, self.sidebar.update)
+        event_bus.subscribe(Events.ADD_SECRET, self.on_add_secret)
+        event_bus.subscribe(Events.FILE_SELECTED, self.on_file_selected)
+
         self.update()
 
     @log
     def update(self):
         super().update()
         self.sidebar.update()
-        self.page.update()
+        # self.page.update()  
 
     @log
     def build(self):
@@ -131,8 +105,23 @@ class VaultApp(UserControl):
         if self.workspace is not None:
             self.sidebar.set_workspace(self.workspace)
 
-    def on_page_resize(self, event):
-        self.file_viewer.width = self.get_file_viewer_width()
+    @log
+    def will_unmount(self):
+        event_bus.unsubscribe(Events.UPDATE_SIDEBAR, self.sidebar.update)
+        event_bus.unsubscribe(Events.ADD_SECRET, self.on_add_secret)
+        event_bus.unsubscribe(Events.FILE_SELECTED, self.on_file_selected)
+        return super().will_unmount()
+
+    @log
+    def on_add_secret(self):
+        self.file_viewer.visible = True
+        self.update()
+
+    @log
+    def on_file_selected(self, path: str):
+        print("on_file_selected", path)
+        self.file_viewer.visible = True
+        self.file_viewer.on_file_selected(path)
         self.update()
 
     def view_workspace_title(self, workspace_tile: str) -> str:
@@ -198,162 +187,8 @@ class VaultApp(UserControl):
             on_dismiss=lambda e: print("Modal dialog dismissed!")
         )
 
-    def view_side_bar(self, on_file_selected, on_create_secret):
-        return Sidebar(self.page, on_file_selected, on_create_secret, SIDEBAR_WIDTH)
-
     def view_password_input(self):
         return TextField(label="Password", password=True, can_reveal_password=True)
-
-    def view_save_file_btn(self, on_click: callable):
-        btn = Button(text="Save", on_click=on_click)
-        return btn
-
-    @log
-    def on_file_save_click(self, event):
-        title = self.file_viewer_title.value
-        content = self.file_viewer_content.value
-        type = self.file_viewer_file_type_picker.value
-        password = self.page.client_storage.get("password")
-
-        if password is None:
-            self.page.snack_bar.content = Text("You do not have a password set, please login first!")
-            self.page.snack_bar.open = True
-            self.update()
-            return
-
-        if title == "" or content == "":
-            return
-
-        self.file_viewer_edit_btn.set_disabled(False)
-        self.file_viewer_save_btn.set_disabled(True)
-        self.file_viewer_title.disabled = True
-        self.file_viewer_content.disabled = True
-        
-        print(f"Saving file {title}, {content}\n with type {type}")
-        file_name = f'{type}#{title.replace(" ", "_")}'
-        file = open(f'{self.workspace}/{file_name}.enc', "w")
-        
-        encrypted_content = encrypt(f'{title}\n{content}', password)
-        file.write(encrypted_content)
-        file.close()
-        self.sidebar.reload_workspace()
-        self.update()
-
-    def view_edit_file_btn(self, on_click: callable):
-        btn = Button(text="Edit", on_click=on_click)
-        return btn
-
-    def view_delete_file_btn(self, on_click: callable):
-        btn = DeleteButton(text="Delete", on_click=on_click, )
-        return btn
-    
-    def on_file_delete_click(self, event):
-        title = self.file_viewer_title.value
-        type = self.file_viewer_file_type_picker.value
-        file_name = f'{type}#{title.replace(" ", "_")}'
-        file_path = f'{self.workspace}/{file_name}.enc'
-        remove(file_path)
-        self.sidebar.reload_workspace()
-        self.update()
-
-
-    @log
-    def on_file_edit_click(self, event):
-        self.file_viewer_edit_btn.set_disabled(True)
-        self.file_viewer_save_btn.set_disabled(False)
-        self.file_viewer_title.disabled = False
-        self.file_viewer_content.disabled = False
-        self.update()
-
-    @log
-    def copy_to_clipboard(self, text):
-        copy(text)
-        self.page.snack_bar.content = Text("Copied to clipboard")
-        self.page.snack_bar.open = True
-        self.update()
-
-    # on click it copies the file_viewer_title text to cplipboard
-    def view_copy_title_btn(self):
-        return Container(
-            content=IconButton(
-                icon=icons.COPY,
-                on_click=lambda _: self.copy_to_clipboard(
-                    self.file_viewer_title.value),
-            )
-        )
-
-    def view_copy_content_btn(self):
-
-        return Container(
-            content=IconButton(
-                icon=icons.COPY,
-                on_click=lambda _: self.copy_to_clipboard(
-                    self.file_viewer_content.value)
-            )
-        )
-
-    def view_file_viewer_title(self):
-        return TextField(
-            expand=True,
-            label="Title",
-            label_style=TextStyle(size=16, weight="bold"),
-        )
-
-    def view_file_viewer_content(self):
-        return TextField(
-            expand=True,
-            multiline=True,
-            label="Content",
-            label_style=TextStyle(size=16, weight="bold"),
-        )
-
-    def on_file_picker_change(self, event):
-        print(self.file_viewer_file_type_picker.value)
-        self.update()
-
-    def view_file_viewer_file_type_picker(self):
-        options = []
-
-        for file_type in FileType:
-            option = dropdown.Option(
-                text=FILE_TYPE_VALUES[file_type], key=file_type.value)
-            options.append(option)
-
-        file_type_picker = Dropdown(
-            width=200,
-            options=options
-        )
-        return file_type_picker
-
-    def get_file_viewer_width(self):
-        return self.page.width - SIDEBAR_WIDTH - 20
-
-    def view_file_viewer(self):
-        return Card(
-            width=self.get_file_viewer_width(),
-            height=self.page.height,
-            content=Container(
-                padding=padding.all(10),
-                alignment=Alignment(1, -1),
-                content=Column(
-                    controls=[
-                        Row(
-                            alignment=MainAxisAlignment.END,
-                            controls=[
-                                self.file_viewer_edit_btn,
-                                self.file_viewer_save_btn,
-                                self.file_viewer_delete_btn
-                            ]),
-                        Row([self.file_viewer_file_type_picker]),
-                        Divider(),
-                        Row([self.file_viewer_title,
-                            self.file_viewer_copy_title_btn]),
-                        Divider(),
-                        Row([self.file_viewer_content,
-                            self.file_viewer_copy_content_btn])
-                    ])
-            )
-        )
 
     @log
     def on_login(self, event: ControlEvent):
@@ -383,42 +218,4 @@ class VaultApp(UserControl):
         self.select_workspace_btn.text = "Change workspace"
         self.appbar.update()
         self.sidebar.set_workspace(self.workspace)
-        self.update()
-
-    @log
-    def on_file_selected(self, file_path: str):
-        # read file contents
-        file_content = open(file_path, 'r').read()
-        password = self.page.client_storage.get("password")
-        decrypted_content = decrypt(file_content, password)
-        file_name = file_path.split("/")[-1]
-        file_type = file_name.split("#")[0]
-        rows = decrypted_content.split('\n')
-        title = rows[0]
-        content = '\n'.join(rows[1:])
-        print(title)
-        print(content)
-        self.file_viewer_title.value = title
-        self.file_viewer_content.value = content
-        self.file_viewer.visible = True
-        self.file_viewer_edit_btn.set_disabled(False)
-        self.file_viewer_save_btn.set_disabled(True)
-        self.file_viewer_delete_btn.set_disabled(False)
-        self.file_viewer_title.disabled = True
-        self.file_viewer_content.disabled = True
-        self.file_viewer_file_type_picker.value = file_type
-        # decrypt file contents
-        # show file contents in a new page
-        self.update()
-
-    @log
-    def on_create_secret(self):
-        self.file_viewer_title.value = ""
-        self.file_viewer_content.value = ""
-        self.file_viewer.visible = True
-        self.file_viewer_edit_btn.set_disabled(True)
-        self.file_viewer_delete_btn.set_disabled(True)
-        self.file_viewer_save_btn.set_disabled(False)
-        self.file_viewer_title.disabled = False
-        self.file_viewer_content.disabled = False
         self.update()

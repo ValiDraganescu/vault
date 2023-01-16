@@ -14,55 +14,54 @@ from flet import (
     ControlEvent,
     ElevatedButton,
     TextField,
-    TextStyle
+    TextStyle,
+    Card
 )
 
 from logger import log
 from glob import glob
 from file_item import FileItem
+from events import event_bus, Events
+from constants import (SIDEBAR_WIDTH)
 
 
 class Sidebar(UserControl):
-    SIDEBAR_WIDTH: int
 
     @log
-    def __init__(self, page: Page, on_file_selected: callable, on_create_secret: callable, width: int = 300):
+    def __init__(self, page: Page):
         super().__init__()
         self.expand = True
         self.page = page
-        self.SIDEBAR_WIDTH = width
-        self.on_file_selected_listener = on_file_selected
-        self.on_create_secret_listener = on_create_secret
         self.workspace: str = None
 
         list_view_height = self.get_list_view_height()
         self.file_list_view = self.view_list_view(list_view_height)
         self.file_list: list[FileItem] = []
-
-        self.add_secret_button = self.view_add_secret_btn(self.on_add_secret)
-
-        self.search_field = self.view_search_field(self.on_search_change)
+        self.add_secret_button = self.view_add_secret_btn()
+        self.add_secret_button.visible = False
+        self.search_field = self.view_search_field()
         self.search_field.visible = False
-
-        self.sidebar_content = self.view_sidbar_content(self.add_secret_button, self.search_field, self.file_list_view)
+        self.sidebar_content = self.view_sidbar_content()
 
     @log
     def build(self):
-
-        return Container(
-            content=Column(
-                controls=[
-                    self.sidebar_content
-                ]
-            ),
-            width=self.SIDEBAR_WIDTH,
-            bgcolor=colors.AMBER_400,
-            padding=10
+        return Card(
+            content=Container(
+                content=Column(
+                    controls=[
+                        self.sidebar_content
+                    ]
+                ),
+                width=SIDEBAR_WIDTH,
+                bgcolor=colors.AMBER_400,
+                padding=10
+            )
         )
 
     @log
     def update(self):
         self.file_list_view.height = self.get_list_view_height()
+        self.reload_workspace()
         super().update()
 
     @log
@@ -72,33 +71,32 @@ class Sidebar(UserControl):
     def view_list_view(self, height: int) -> ListView:
         return ListView(expand=True, spacing=5, height=height)
 
-    def view_add_secret_btn(self, on_click: callable) -> ElevatedButton:
-        btn = ElevatedButton(text="Add secret", on_click=on_click)
-        btn.visible = False
+    def view_add_secret_btn(self) -> ElevatedButton:
+        btn = ElevatedButton(text="Add secret", on_click=lambda _: event_bus.emit(Events.ADD_SECRET))
         return btn
 
-    def view_sidbar_content(self, add_secret_btn: ElevatedButton, search_field: TextField, list_view: ListView) -> Container:
+    def view_sidbar_content(self) -> Container:
         return Container(
             expand=True,
             content=Column(
                 expand=True,
                 controls=[
                     Row([
-                        add_secret_btn
+                        self.add_secret_button
                     ]),
                     Row([
-                        search_field
+                        self.search_field
                     ]),
                     Row(
                         controls=[
-                            list_view
+                            self.file_list_view
                         ])
                 ])
         )
 
-    def view_search_field(self, on_change: callable):
+    def view_search_field(self):
         return TextField(
-            width=self.SIDEBAR_WIDTH - 20,
+            width=SIDEBAR_WIDTH - 20,
             label="Search",
             color=colors.BLACK54,
             border_color=colors.BLACK54,
@@ -107,12 +105,13 @@ class Sidebar(UserControl):
             focused_color=colors.BLACK,
             selection_color=colors.BLACK,
             label_style=TextStyle(color=colors.BLACK54),
-            on_change=on_change
+            on_change=self.on_search_change
         )
 
     @log
     def on_search_change(self, e: ControlEvent):
         self.reload_file_list()
+        self.update()
 
     @log
     def set_workspace(self, workspace: str = None):
@@ -125,11 +124,6 @@ class Sidebar(UserControl):
     def reload_workspace(self):
         self.read_workspace()
         self.reload_file_list()
-        self.update()
-
-    @log
-    def on_add_secret(self, e: ControlEvent):
-        self.on_create_secret_listener()
 
     def get_list_view_height(self) -> int:
         return self.page.height - 200
@@ -142,9 +136,7 @@ class Sidebar(UserControl):
         }
 
         return file_icons.get(file_type, Icon(name=icons.FILE_OPEN, color="black"))
-
-    def on_file_selected(self, e: ControlEvent):
-        self.on_file_selected_listener(e.control.data)
+    
 
     @log
     def read_workspace(self) -> list[str]:
@@ -163,14 +155,18 @@ class Sidebar(UserControl):
         return self.search_field.value in file_item.name
 
     @log
+    def on_file_selected(self, e: ControlEvent):
+        event_bus.emit(Events.FILE_SELECTED, e.control.data)
+
+    @log
     def reload_file_list(self):
         self.file_list_view.controls = []
         for file_item in self.file_list:
             if self.is_item_displayable(file_item):
                 self.file_list_view.controls.append(
                     TextButton(
-                        width=self.SIDEBAR_WIDTH,
-                        on_click=self.on_file_selected,
+                        width=SIDEBAR_WIDTH,
+                        on_click=lambda e: self.on_file_selected(e),
                         data=file_item.path,
                         content=Row([
                             self.get_icon(file_item.type),
@@ -180,4 +176,3 @@ class Sidebar(UserControl):
                         ),
                     )
                 )
-        self.update()
