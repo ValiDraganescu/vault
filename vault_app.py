@@ -29,10 +29,10 @@ from sidebar import Sidebar
 from constants import (SIDEBAR_WIDTH)
 from file_viewer import FileViewer
 from events import event_bus, Events
+from store import Store
 
 class VaultApp(UserControl):
     page: Page
-    workspace: str
     workspace_title: Text
     select_workspace_btn: ElevatedButton
     appbar_items: list[PopupMenuItem]
@@ -48,8 +48,7 @@ class VaultApp(UserControl):
         super().__init__()
         self.expand = True
         self.page = page
-
-        self.workspace = self.page.client_storage.get("workspace")
+        self.store = Store(self.page)
         workspace_title = self.get_wokrspace_title_text()
         self.workspace_title = self.view_workspace_title(workspace_title)
         self.select_workspace_btn = self.view_select_workspace_btn()
@@ -102,8 +101,6 @@ class VaultApp(UserControl):
     @log
     def did_mount(self):
         super().did_mount()
-        if self.workspace is not None:
-            self.sidebar.set_workspace(self.workspace)
 
     @log
     def will_unmount(self):
@@ -114,12 +111,13 @@ class VaultApp(UserControl):
 
     @log
     def on_add_secret(self):
+        self.file_viewer.clear()
         self.file_viewer.visible = True
+        self.file_viewer.on_create_secret()
         self.update()
 
     @log
     def on_file_selected(self, path: str):
-        print("on_file_selected", path)
         self.file_viewer.visible = True
         self.file_viewer.on_file_selected(path)
         self.update()
@@ -200,22 +198,23 @@ class VaultApp(UserControl):
     def on_login_success(self, event: ControlEvent):
         self.login_dialog.open = False
         password = self.password_input.value
-        self.page.client_storage.set("password", password)
+        self.store.put_password(password)
         self.update()
 
     @log
     def get_wokrspace_title_text(self):
-        if self.workspace is None:
+        workspace = self.store.get_workspace()
+        if workspace is None:
             return "Now workspace selected"
         else:
-            return f'Workspace: {self.workspace.split("/")[-1]}'
+            return f'Workspace: {workspace.split("/")[-1]}'
 
     @log
     def on_select_workspace(self, event: FilePickerResultEvent):
-        self.workspace = event.path
-        self.page.client_storage.set("workspace", self.workspace)
+        workspace = event.path
+        self.store.put_workspace(workspace)
         self.workspace_title.value = self.get_wokrspace_title_text()
         self.select_workspace_btn.text = "Change workspace"
         self.appbar.update()
-        self.sidebar.set_workspace(self.workspace)
+        self.sidebar.update()
         self.update()

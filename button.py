@@ -8,6 +8,7 @@ class Button(ElevatedButton):
 
     def set_disabled(self, disabled: bool):
         self.disabled = disabled
+        self.visible = True
         if disabled:
             self.color = colors.BLUE_GREY_500
             self.bgcolor = colors.BLUE_GREY_500

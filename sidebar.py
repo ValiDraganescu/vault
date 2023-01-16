@@ -23,6 +23,7 @@ from glob import glob
 from file_item import FileItem
 from events import event_bus, Events
 from constants import (SIDEBAR_WIDTH)
+from store import Store
 
 
 class Sidebar(UserControl):
@@ -32,7 +33,7 @@ class Sidebar(UserControl):
         super().__init__()
         self.expand = True
         self.page = page
-        self.workspace: str = None
+        self.store = Store(self.page)
 
         list_view_height = self.get_list_view_height()
         self.file_list_view = self.view_list_view(list_view_height)
@@ -61,7 +62,11 @@ class Sidebar(UserControl):
     @log
     def update(self):
         self.file_list_view.height = self.get_list_view_height()
-        self.reload_workspace()
+        workspace = self.store.get_workspace()
+        if workspace:
+            self.add_secret_button.visible = True
+            self.search_field.visible = True
+            self.reload_workspace()
         super().update()
 
     @log
@@ -113,14 +118,6 @@ class Sidebar(UserControl):
         self.reload_file_list()
         self.update()
 
-    @log
-    def set_workspace(self, workspace: str = None):
-        self.workspace = workspace
-        self.add_secret_button.visible = True
-        self.search_field.visible = True
-        self.reload_workspace()
-        self.update()
-
     def reload_workspace(self):
         self.read_workspace()
         self.reload_file_list()
@@ -141,9 +138,10 @@ class Sidebar(UserControl):
     @log
     def read_workspace(self) -> list[str]:
         self.file_list = []
-        if self.workspace is not None:
+        workspace = self.store.get_workspace()
+        if workspace is not None:
             # read the names of the documents from the workspace path
-            for file_path in glob(f"{self.workspace}/*.enc"):
+            for file_path in glob(f"{workspace}/*.enc"):
                 self.file_list.append(FileItem(file_path))
 
     @log
