@@ -3,10 +3,10 @@ class FileItem:
     name: str
     type: str
 
-    def __init__(self, path):
+    def __init__(self, path: str):
         self.path = path
         self.name = path.split("/")[-1].split("#")[1].split(".enc")[0]
-        self.type = self.get_file_type(self.name)
+        self.type = self.get_file_type()
 
     # file name exaples:
     # web#google.com.enc
@@ -14,5 +14,6 @@ class FileItem:
     # app#facebook.enc
     # app#teamviwer.enc
     # this function returns the file type that is the part before the # sign
-    def get_file_type(self, file_name: str) -> str:
-        return file_name.split("#")[0]
+    def get_file_type(self) -> str:
+        parts = self.path.split("/")[-1].split("#")[0]
+        return parts

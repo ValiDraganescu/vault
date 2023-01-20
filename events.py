@@ -4,7 +4,10 @@ from enum import Enum
 class Events(Enum):
     ADD_SECRET = "add_secret"
     FILE_SELECTED = "file_selected"
-    UPDATE_SIDEBAR = "update_sidebar"
+    UPDATE_SIDEBAR = "update_sidebar",
+    ON_LOGGED_IN = "on_logged_in"
+    ENCRYPTION_ERROR = "encryption_error"
+    DECRYPTION_ERROR = "decryption_error"
 
 
 class EventBus(object):

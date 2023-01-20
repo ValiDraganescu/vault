@@ -17,7 +17,6 @@ class FileManager:
         rows = decrypted_content.split('\n')
         title = rows[0]
         content = '\n'.join(rows[1:])
-
         return FileViewerContent(title, content, file_type)
 
     def write(self, file_viewer_content: FileViewerContent):

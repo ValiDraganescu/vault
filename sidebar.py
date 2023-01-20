@@ -23,17 +23,17 @@ from glob import glob
 from file_item import FileItem
 from events import event_bus, Events
 from constants import (SIDEBAR_WIDTH)
-from store import Store
+from store import get_store
 
 
 class Sidebar(UserControl):
 
-    @log
+    
     def __init__(self, page: Page):
         super().__init__()
         self.expand = True
         self.page = page
-        self.store = Store(self.page)
+        self.store = get_store(self.page)
 
         list_view_height = self.get_list_view_height()
         self.file_list_view = self.view_list_view(list_view_height)
@@ -44,7 +44,7 @@ class Sidebar(UserControl):
         self.search_field.visible = False
         self.sidebar_content = self.view_sidbar_content()
 
-    @log
+    
     def build(self):
         return Card(
             content=Container(
@@ -54,12 +54,12 @@ class Sidebar(UserControl):
                     ]
                 ),
                 width=SIDEBAR_WIDTH,
-                bgcolor=colors.AMBER_400,
+                # bgcolor=colors.AMBER_400,
                 padding=10
             )
         )
 
-    @log
+    
     def update(self):
         self.file_list_view.height = self.get_list_view_height()
         workspace = self.store.get_workspace()
@@ -69,7 +69,7 @@ class Sidebar(UserControl):
             self.reload_workspace()
         super().update()
 
-    @log
+    
     def did_mount(self):
         super().did_mount()
 
@@ -113,7 +113,7 @@ class Sidebar(UserControl):
             on_change=self.on_search_change
         )
 
-    @log
+    
     def on_search_change(self, e: ControlEvent):
         self.reload_file_list()
         self.update()
@@ -128,14 +128,15 @@ class Sidebar(UserControl):
     def get_icon(self, file_type: str) -> Icon:
 
         file_icons = {
-            "web": Icon(name=icons.WEB, color="black"),
-            "app": Icon(name=icons.APPS, color="black")
+            "web": Icon(name=icons.WEB),
+            "app": Icon(name=icons.APPS)
         }
 
-        return file_icons.get(file_type, Icon(name=icons.FILE_OPEN, color="black"))
+        icon = file_icons.get(file_type, Icon(name=icons.FILE_OPEN))
+        return icon
     
 
-    @log
+    
     def read_workspace(self) -> list[str]:
         self.file_list = []
         workspace = self.store.get_workspace()
@@ -144,19 +145,19 @@ class Sidebar(UserControl):
             for file_path in glob(f"{workspace}/*.enc"):
                 self.file_list.append(FileItem(file_path))
 
-    @log
+    
     def is_item_displayable(self, file_item: FileItem) -> bool:
         if self.search_field.value is None:
             return True
         if self.search_field.value == "":
             return True
-        return self.search_field.value in file_item.name
+        return self.search_field.value.lower() in file_item.name.lower()
 
-    @log
+    
     def on_file_selected(self, e: ControlEvent):
         event_bus.emit(Events.FILE_SELECTED, e.control.data)
 
-    @log
+    
     def reload_file_list(self):
         self.file_list_view.controls = []
         for file_item in self.file_list:
@@ -168,7 +169,7 @@ class Sidebar(UserControl):
                         data=file_item.path,
                         content=Row([
                             self.get_icon(file_item.type),
-                            Text(file_item.name, color="black", size=16),
+                            Text(file_item.name, size=16),
                         ],
                             alignment=MainAxisAlignment.START,
                         ),

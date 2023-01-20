@@ -14,10 +14,6 @@ from flet import (
     ElevatedButton,
     FilePicker,
     AlertDialog,
-    TextButton,
-    MainAxisAlignment,
-    Column,
-    Divider,
     TextField,
     ControlEvent,
     FilePickerResultEvent,
@@ -29,7 +25,10 @@ from sidebar import Sidebar
 from constants import (SIDEBAR_WIDTH)
 from file_viewer import FileViewer
 from events import event_bus, Events
-from store import Store
+from store import get_store
+from dialog.login_dialog import LoginDialog
+from security_manager import SecurityManager
+from file_viwer_content import FileViewerContent
 
 class VaultApp(UserControl):
     page: Page
@@ -43,22 +42,18 @@ class VaultApp(UserControl):
     login_dialog: AlertDialog
     file_viewer: FileViewer
 
-    @log
+    
     def __init__(self, page: Page):
         super().__init__()
         self.expand = True
         self.page = page
-        self.store = Store(self.page)
-        workspace_title = self.get_wokrspace_title_text()
-        self.workspace_title = self.view_workspace_title(workspace_title)
-        self.select_workspace_btn = self.view_select_workspace_btn()
+        self.store = get_store(self.page)
+        self.security = SecurityManager()
 
-        self.appbar_items = self.view_appbar_items(self.on_login)
-        self.appbar = self.view_appbar(
-            workspace_title=self.workspace_title,
-            select_workspace_btn=self.select_workspace_btn,
-            appbar_items=self.appbar_items
-        )
+        private_key = self.store.get_private_key()
+
+        self.select_workspace_btn = self.view_select_workspace_btn()
+        self.appbar = self.view_appbar()
         self.page.appbar = self.appbar
         self.page.snack_bar = SnackBar(
             content=Text("")
@@ -69,25 +64,28 @@ class VaultApp(UserControl):
         self.page.overlay.append(self.file_picker)
 
         self.sidebar = Sidebar(self.page)
-        self.password_input = self.view_password_input()
-        self.login_dialog = self.view_login_dialog(
-            self.password_input, on_click=self.on_login_success)
+        self.sidebar.visible = private_key is not None
 
+        self.password_input = self.view_password_input()
         self.file_viewer = FileViewer(self.page)
         
         event_bus.subscribe(Events.UPDATE_SIDEBAR, self.sidebar.update)
         event_bus.subscribe(Events.ADD_SECRET, self.on_add_secret)
         event_bus.subscribe(Events.FILE_SELECTED, self.on_file_selected)
+        event_bus.subscribe(Events.ON_LOGGED_IN, self.update)
 
-        self.update()
-
-    @log
+    
     def update(self):
         super().update()
+        private_key = self.store.get_private_key()
+        self.sidebar.visible = private_key is not None
         self.sidebar.update()
-        # self.page.update()  
+        if self.appbar is not None:
+            self.page.appbar.actions = self.view_appbar_actions()
+            self.page.appbar.update()
+        self.page.update()  
 
-    @log
+    
     def build(self):
         return Container(
             expand=True,
@@ -98,44 +96,96 @@ class VaultApp(UserControl):
             ])
         )
 
-    @log
+    
     def did_mount(self):
         super().did_mount()
+        self.sidebar.update()
 
-    @log
+    
     def will_unmount(self):
         event_bus.unsubscribe(Events.UPDATE_SIDEBAR, self.sidebar.update)
         event_bus.unsubscribe(Events.ADD_SECRET, self.on_add_secret)
         event_bus.unsubscribe(Events.FILE_SELECTED, self.on_file_selected)
+        event_bus.unsubscribe(Events.ON_LOGGED_IN, self.update)
         return super().will_unmount()
 
-    @log
+    
     def on_add_secret(self):
         self.file_viewer.clear()
         self.file_viewer.visible = True
         self.file_viewer.on_create_secret()
         self.update()
 
-    @log
+    
     def on_file_selected(self, path: str):
+        private_key = self.store.get_private_key()
+        data = open(path, 'rb').read()
+        decrypted_content = self.security.decrypt(private_key, data)
+        if decrypted_content is None:
+            self.page.snack_bar.content = Text("Error decrypting file")
+            self.page.snack_bar.open = True
+            self.update()
+            return
+
+        file_name = path.split("/")[-1]
+        file_type = file_name.split("#")[0]
+        str_content = decrypted_content.decode('utf-8')
+        rows = str_content.split('\n')
+        title = rows[0]
+        content = '\n'.join(rows[1:])
+        file_viewer_content = FileViewerContent(title, content, file_type)
+        self.file_viewer.on_file_selected(file_viewer_content)
         self.file_viewer.visible = True
-        self.file_viewer.on_file_selected(path)
+        self.update()
+
+    
+    def on_enctryption_error(self, error: str):
+        self.page.snack_bar.content = Text(error)
+        self.page.snack_bar.open = True
         self.update()
 
     def view_workspace_title(self, workspace_tile: str) -> str:
         return Text(value=workspace_tile, size=16, weight="bold", color=colors.BLUE_GREY_900)
 
     def view_select_workspace_btn(self) -> ElevatedButton:
-        return ElevatedButton(text="Select a workspace", on_click=lambda _: self.file_picker.get_directory_path())
+        btn_text = "Select Workspace"
+        workspace = self.store.get_workspace()
+        if workspace:
+            btn_text = "Change Workspace"
+        return ElevatedButton(text=btn_text, on_click=lambda _: self.file_picker.get_directory_path())
 
-    def view_appbar_items(self, on_login: callable):
+    def view_appbar_actions(self):
         return [
-            PopupMenuItem(text="Login", on_click=on_login),
+            Container(
+                content=Row([
+                    self.view_workspace_title(self.get_wokrspace_title_text()),
+                    self.select_workspace_btn
+                ]),
+            ),
+            Container(
+                content=PopupMenuButton(
+                    items=self.view_appbar_menu_items(),
+                ),
+                margin=margin.only(left=50, right=25)
+            )
+        ]
+    def view_appbar_menu_items(self) -> list[PopupMenuItem]:
+        items = []
+        pkey = self.store.get_private_key()
+        if pkey:
+            email = self.store.get_email()
+            btn_text = f"Logged in as {email}. Logout"
+            items.append(PopupMenuItem(text=btn_text, on_click=self.on_logout))
+        else:
+            items.append(PopupMenuItem(text="Login", on_click=self.on_login))
+        items.extend([
             PopupMenuItem(),  # divider
             PopupMenuItem(text="Settings")
-        ]
+        ])
+        
+        return items
 
-    def view_appbar(self, workspace_title: str, select_workspace_btn: ElevatedButton, appbar_items: list[PopupMenuItem]):
+    def view_appbar(self):
         return AppBar(
             leading=Icon(icons.SAFETY_CHECK),
             leading_width=100,
@@ -143,65 +193,29 @@ class VaultApp(UserControl):
             center_title=False,
             toolbar_height=75,
             bgcolor=colors.LIGHT_BLUE_ACCENT_700,
-            actions=[
-                Container(
-                    content=Row([
-                        workspace_title,
-                        select_workspace_btn
-                    ]),
-                ),
-                Container(
-                    content=PopupMenuButton(
-                        items=appbar_items
-                    ),
-                    margin=margin.only(left=50, right=25)
-                )
-            ],
+            actions=self.view_appbar_actions()
         )
 
     def view_file_picker(self, on_result: callable):
         return FilePicker(on_result=on_result)
 
-    def view_login_dialog(self, password_input: TextField, on_click: callable):
-        return AlertDialog(
-            modal=True,
-            title=Text("Login"),
-            content=Container(
-                content=Column([
-                    Row([
-                        Text(
-                            "Please input a password, make sure it's strong and do not forget it!")
-                    ]),
-                    Row([Text(
-                         'If you forget your password, you will not be able to recover your secrets!')]),
-                    Row([Divider()]),
-                    Row([password_input]),
-                ])
-            ),
-            actions=[
-                TextButton("Login", on_click=on_click),
-            ],
-            actions_alignment=MainAxisAlignment.END,
-            on_dismiss=lambda e: print("Modal dialog dismissed!")
-        )
-
     def view_password_input(self):
         return TextField(label="Password", password=True, can_reveal_password=True)
 
-    @log
+    
     def on_login(self, event: ControlEvent):
-        self.page.dialog = self.login_dialog
-        self.login_dialog.open = True
+        self.page.dialog = LoginDialog(self.page)
+        self.page.dialog.open = True
         self.update()
 
-    @log
-    def on_login_success(self, event: ControlEvent):
-        self.login_dialog.open = False
-        password = self.password_input.value
-        self.store.put_password(password)
+    
+    def on_logout(self, event: ControlEvent):
+        self.store.delete_private_key()
+        self.store.delete_public_key()
+        self.store.delete_email()
         self.update()
 
-    @log
+    
     def get_wokrspace_title_text(self):
         workspace = self.store.get_workspace()
         if workspace is None:
@@ -209,12 +223,9 @@ class VaultApp(UserControl):
         else:
             return f'Workspace: {workspace.split("/")[-1]}'
 
-    @log
+    
     def on_select_workspace(self, event: FilePickerResultEvent):
         workspace = event.path
         self.store.put_workspace(workspace)
-        self.workspace_title.value = self.get_wokrspace_title_text()
         self.select_workspace_btn.text = "Change workspace"
-        self.appbar.update()
-        self.sidebar.update()
         self.update()
