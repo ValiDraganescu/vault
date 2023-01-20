@@ -38,12 +38,15 @@ class FileViewer (UserControl):
         super().__init__()
 
         self.page = page
-
         self.security = SecurityManager()
         self.file_viewer_copy_title_btn = self.view_copy_title_btn()
         self.file_viewer_copy_content_btn = self.view_copy_content_btn()
-        self.file_viewer_title = self.view_file_viewer_title()
-        self.file_viewer_content = self.view_file_viewer_content()
+        self.file_viewer_name = self.view_name()
+        self.file_viewer_extra = self.view_extra()
+        self.file_viewer_user_name = self.view_user_name()
+        self.file_viewer_password = self.view_password()
+        self.file_viewer_url = self.view_url()
+        self.file_viewer_tag= self.view_tag()
         self.file_viewer_save_btn = self.view_save_file_btn()
         self.file_viewer_edit_btn = self.view_edit_file_btn()
         self.file_viewer_delete_btn = self.view_delete_file_btn()
@@ -58,7 +61,9 @@ class FileViewer (UserControl):
             height=self.page.height,
             padding=padding.all(10),
             alignment=Alignment(1, -1),
+            expand=True,
             content=Column(
+                expand=True,
                 controls=[
                     Row(
                         alignment=MainAxisAlignment.END,
@@ -75,14 +80,30 @@ class FileViewer (UserControl):
                     Divider(),
                     Row(
                         [
-                            self.file_viewer_title, 
+                            self.file_viewer_name, 
                             self.file_viewer_copy_title_btn
                         ]
                     ),
                     Divider(),
                     Row(
                         [
-                            self.file_viewer_content,
+                            self.file_viewer_url,   
+                        ]
+                    ),
+                    Row(
+                        [
+                            self.file_viewer_user_name,
+                        ]
+                    ),
+                    Row(
+                        [
+                            self.file_viewer_password
+                        ]
+                    ),
+                    Divider(),
+                    Row(
+                        [
+                            self.file_viewer_extra,
                             self.file_viewer_copy_content_btn
                         ]
                     )
@@ -101,8 +122,12 @@ class FileViewer (UserControl):
     
     def clear(self):
         self.file_viewer_file_type_picker.value = FileType.DEFAULT
-        self.file_viewer_title.value = ""
-        self.file_viewer_content.value = ""
+        self.file_viewer_name.value = ""
+        self.file_viewer_extra.value = ""
+        self.file_viewer_user_name.value = ""
+        self.file_viewer_password.value = ""
+        self.file_viewer_url.value = ""
+        self.file_viewer_tag.value = ""
         self.update()
 
     
@@ -110,7 +135,7 @@ class FileViewer (UserControl):
         return IconButton(
             icon=icons.COPY,
             on_click=lambda _: self.copy_to_clipboard(
-                self.file_viewer_title.value)
+                self.file_viewer_name.value)
         )
 
     
@@ -125,19 +150,49 @@ class FileViewer (UserControl):
         return IconButton(
             icon=icons.COPY,
             on_click=lambda _: self.copy_to_clipboard(
-                self.file_viewer_content.value)
+                self.file_viewer_extra.value)
         )
 
     
-    def view_file_viewer_title(self) -> TextField:
+    def view_name(self) -> TextField:
         return TextField(
             expand=True,
             label="Title",
             label_style=TextStyle(size=16, weight="bold"),
         )
-
     
-    def view_file_viewer_content(self) -> TextField:
+    def view_user_name(self) -> TextField:
+        return TextField(
+            expand=True,
+            label="User Name",
+            keyboard_type="email",
+            label_style=TextStyle(size=16, weight="bold"),
+        )
+
+    def view_password(self) -> TextField:
+        return TextField(
+            expand=True,
+            label="Password",
+            password=True,
+            can_reveal_password=True,
+            label_style=TextStyle(size=16, weight="bold"),
+        )
+
+    def view_tag(self) -> TextField:
+        return TextField(
+            expand=True,
+            label="Tag",
+            label_style=TextStyle(size=16, weight="bold"),
+        )
+    
+    def view_url(self) -> TextField:
+        return TextField(
+            expand=True,
+            label="Url",
+            label_style=TextStyle(size=16, weight="bold"),
+        )
+    
+    def view_extra(self) -> TextField:
         return TextField(
             expand=True,
             multiline=True,
@@ -162,8 +217,8 @@ class FileViewer (UserControl):
 
     
     def on_file_save_click(self, event):
-        title = self.file_viewer_title.value
-        content = self.file_viewer_content.value
+        title = self.file_viewer_name.value
+        content = self.file_viewer_extra.value
         type = self.file_viewer_file_type_picker.value
         workspace = self.store.get_workspace()
         public_key = self.store.get_public_key()
@@ -173,11 +228,14 @@ class FileViewer (UserControl):
 
         self.file_viewer_edit_btn.set_disabled(False)
         self.file_viewer_save_btn.set_disabled(True)
-        self.file_viewer_title.disabled = True
-        self.file_viewer_content.disabled = True
+        self.file_viewer_name.disabled = True
+        self.file_viewer_extra.disabled = True
+        self.file_viewer_url.disabled = True
+        self.file_viewer_user_name.disabled = True
+        self.file_viewer_password.disabled = True
+        self.file_viewer_tag.disabled = True
 
         file_name = f'{type}#{title.replace(" ", "_")}'
-
         encrypted_content = self.security.encrypt(public_key, f'{title}\n{content}')
         if encrypted_content is None:
             self.page.snack_bar.content = Text("Failed to encrypt file")
@@ -209,7 +267,7 @@ class FileViewer (UserControl):
 
     
     def on_file_delete_click(self, event):
-        title = self.file_viewer_title.value
+        title = self.file_viewer_name.value
         type = self.file_viewer_file_type_picker.value
         workspace = self.store.get_workspace()
         file_name = f'{type}#{title.replace(" ", "_")}'
@@ -221,8 +279,12 @@ class FileViewer (UserControl):
     def on_file_edit_click(self, event):
         self.file_viewer_edit_btn.set_disabled(True)
         self.file_viewer_save_btn.set_disabled(False)
-        self.file_viewer_title.disabled = False
-        self.file_viewer_content.disabled = False
+        self.file_viewer_name.disabled = False
+        self.file_viewer_extra.disabled = False
+        self.file_viewer_url.disabled = False
+        self.file_viewer_user_name.disabled = False
+        self.file_viewer_password.disabled = False
+        self.file_viewer_tag.disabled = False
         self.update()
 
     
@@ -237,23 +299,35 @@ class FileViewer (UserControl):
 
     
     def on_file_selected(self, file_content: FileViewerContent):
-        self.file_viewer_title.value = file_content.title
-        self.file_viewer_content.value = file_content.content
+        self.file_viewer_name.value = file_content.name
+        self.file_viewer_extra.value = file_content.extra
+        self.file_viewer_url.value = file_content.url
+        self.file_viewer_user_name.value = file_content.username
+        self.file_viewer_password.value = file_content.password
+        self.file_viewer_tag.value = file_content.tag
         self.file_viewer_edit_btn.set_disabled(False)
         self.file_viewer_save_btn.set_disabled(True)
         self.file_viewer_delete_btn.set_disabled(False)
-        self.file_viewer_title.disabled = True
-        self.file_viewer_content.disabled = True
-        self.file_viewer_file_type_picker.value = file_content.file_type
+        self.file_viewer_name.disabled = True
+        self.file_viewer_extra.disabled = True
+        self.file_viewer_url.disabled = True
+        self.file_viewer_user_name.disabled = True
+        self.file_viewer_password.disabled = False
+        self.file_viewer_tag.disabled = True
+        self.file_viewer_file_type_picker.value = file_content.type
         self.update()
 
     
     def on_create_secret(self):
-        self.file_viewer_title.value = ""
-        self.file_viewer_content.value = ""
+        self.file_viewer_name.value = ""
+        self.file_viewer_extra.value = ""
         self.file_viewer_edit_btn.set_disabled(True)
         self.file_viewer_delete_btn.set_disabled(True)
         self.file_viewer_save_btn.set_disabled(False)
-        self.file_viewer_title.disabled = False
-        self.file_viewer_content.disabled = False
+        self.file_viewer_name.disabled = False
+        self.file_viewer_extra.disabled = False
+        self.file_viewer_url.disabled = False
+        self.file_viewer_user_name.disabled = False
+        self.file_viewer_password.disabled = False
+        self.file_viewer_tag.disabled = False
         self.update()

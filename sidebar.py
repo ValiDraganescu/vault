@@ -20,10 +20,10 @@ from flet import (
 
 from logger import log
 from glob import glob
-from file_item import FileItem
 from events import event_bus, Events
 from constants import (SIDEBAR_WIDTH)
 from store import get_store
+from file_viwer_content import FileViewerContent
 
 
 class Sidebar(UserControl):
@@ -37,7 +37,7 @@ class Sidebar(UserControl):
 
         list_view_height = self.get_list_view_height()
         self.file_list_view = self.view_list_view(list_view_height)
-        self.file_list: list[FileItem] = []
+        self.file_list: list[FileViewerContent] = []
         self.add_secret_button = self.view_add_secret_btn()
         self.add_secret_button.visible = False
         self.search_field = self.view_search_field()
@@ -143,17 +143,16 @@ class Sidebar(UserControl):
         if workspace is not None:
             # read the names of the documents from the workspace path
             for file_path in glob(f"{workspace}/*.enc"):
-                self.file_list.append(FileItem(file_path))
-
+                file_name = file_path.split("/")[-1]
+                self.file_list.append(FileViewerContent.from_file_name(workspace, file_name))
     
-    def is_item_displayable(self, file_item: FileItem) -> bool:
+    def is_item_displayable(self, file_item: FileViewerContent) -> bool:
         if self.search_field.value is None:
             return True
         if self.search_field.value == "":
             return True
         return self.search_field.value.lower() in file_item.name.lower()
 
-    
     def on_file_selected(self, e: ControlEvent):
         event_bus.emit(Events.FILE_SELECTED, e.control.data)
 
@@ -166,7 +165,7 @@ class Sidebar(UserControl):
                     TextButton(
                         width=SIDEBAR_WIDTH,
                         on_click=lambda e: self.on_file_selected(e),
-                        data=file_item.path,
+                        data=file_item.file_path,
                         content=Row([
                             self.get_icon(file_item.type),
                             Text(file_item.name, size=16),

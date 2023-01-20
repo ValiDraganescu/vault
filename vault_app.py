@@ -24,11 +24,13 @@ from logger import log
 from sidebar import Sidebar
 from constants import (SIDEBAR_WIDTH)
 from file_viewer import FileViewer
+from file_type import FileType
 from events import event_bus, Events
 from store import get_store
 from dialog.login_dialog import LoginDialog
 from security_manager import SecurityManager
 from file_viwer_content import FileViewerContent
+import csv
 
 class VaultApp(UserControl):
     page: Page
@@ -60,8 +62,10 @@ class VaultApp(UserControl):
         )
         self.page.snack_bar.open = False
 
-        self.file_picker = self.view_file_picker(self.on_select_workspace)
+        self.file_picker = FilePicker(on_result=self.on_select_workspace)
         self.page.overlay.append(self.file_picker)
+        self.import_file_picker = FilePicker(on_result=self.on_import_file)
+        self.page.overlay.append(self.import_file_picker)
 
         self.sidebar = Sidebar(self.page)
         self.sidebar.visible = private_key is not None
@@ -128,16 +132,13 @@ class VaultApp(UserControl):
             return
 
         file_name = path.split("/")[-1]
-        file_type = file_name.split("#")[0]
         str_content = decrypted_content.decode('utf-8')
-        rows = str_content.split('\n')
-        title = rows[0]
-        content = '\n'.join(rows[1:])
-        file_viewer_content = FileViewerContent(title, content, file_type)
+        workspace = self.store.get_workspace()
+        file_viewer_content = FileViewerContent.from_file(workspace, file_name, str_content)
+
         self.file_viewer.on_file_selected(file_viewer_content)
         self.file_viewer.visible = True
         self.update()
-
     
     def on_enctryption_error(self, error: str):
         self.page.snack_bar.content = Text(error)
@@ -176,6 +177,7 @@ class VaultApp(UserControl):
             email = self.store.get_email()
             btn_text = f"Logged in as {email}. Logout"
             items.append(PopupMenuItem(text=btn_text, on_click=self.on_logout))
+            items.append(PopupMenuItem(text="Import from Lastpass", on_click=lambda _: self.import_file_picker.pick_files()))
         else:
             items.append(PopupMenuItem(text="Login", on_click=self.on_login))
         items.extend([
@@ -188,16 +190,13 @@ class VaultApp(UserControl):
     def view_appbar(self):
         return AppBar(
             leading=Icon(icons.SAFETY_CHECK),
-            leading_width=100,
-            title=Text("Git Vault", size=24, text_align="end"),
+            leading_width=10,
+            title=Text("DistriLock", size=24, text_align="end"),
             center_title=False,
             toolbar_height=75,
             bgcolor=colors.LIGHT_BLUE_ACCENT_700,
             actions=self.view_appbar_actions()
         )
-
-    def view_file_picker(self, on_result: callable):
-        return FilePicker(on_result=on_result)
 
     def view_password_input(self):
         return TextField(label="Password", password=True, can_reveal_password=True)
@@ -229,3 +228,48 @@ class VaultApp(UserControl):
         self.store.put_workspace(workspace)
         self.select_workspace_btn.text = "Change workspace"
         self.update()
+
+    def on_import_file(self, event: FilePickerResultEvent):
+        files = event.files
+        if len(files) == 0:
+            self.page.snack_bar.content = Text("No file selected")
+            return
+
+        if len(files) > 1:
+            self.page.snack_bar.content = Text("Only one file can be selected")
+            return
+
+        file = files[0]
+        path = file.path
+        with open(path) as csv_file:
+            csv_reader = csv.reader(csv_file, delimiter=',')
+            line_count = 0
+            workspace = self.store.get_workspace()
+            public_key = self.store.get_public_key()
+            for row in csv_reader:
+                line_count += 1
+                if line_count == 0:
+                    continue
+                else:
+                    file_content = FileViewerContent(
+                        url=row[0],
+                        username=row[1],
+                        password=row[2],
+                        extra=row[4],
+                        name=row[5],
+                        tag=row[6],
+                        fav=row[7],
+                        file_type= FileType.WEB if row[0] else FileType.DEFAULT
+                    )
+                    file_name = file_content.get_file_name()
+                    file_content = file_content.get_file_content()
+                    encrypted_content = self.security.encrypt(public_key, file_content)
+                    try:
+                        file = open(f'{workspace}/{file_name}', "wb")
+                        file.write(encrypted_content)
+                        file.close()
+                    except Exception as e:
+                        print(e)
+        print(f'Processed {line_count} lines.')
+        self.update()
+
